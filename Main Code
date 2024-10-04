@@ -1,0 +1,74 @@
+from flask import Flask, request, jsonify
+from pyngrok import ngrok
+import openai
+import requests
+
+# Initialize OpenAI API key
+openai.api_key = 'Your API key'
+
+# Function to get the chatbot response
+def get_chatbot_response(user_input):
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",  # ChatGPT model
+        messages=[
+            {"role": "system", "content": "You are a supplier negotiating product prices."},
+            {"role": "user", "content": user_input}
+        ]
+    )
+    return response['choices'][0]['message']['content']
+
+# Function to handle pricing logic
+def price(offer):
+    initial_price = 100
+    discount = 80
+    if offer >= initial_price:
+        return f"Great! We accept your offer of ${offer}."
+    elif offer >= discount:
+        counteroffer = (offer + initial_price) / 2
+        return f"We can't go that low, but how about ${counteroffer:.2f}?"
+    else:
+        return "Sorry, we can't accept such a low offer. Our minimum price is $80."
+
+# Function to handle user interaction
+def handle_user_interaction(user_message):
+    # Process user message to detect price offers
+    try:
+        user_offer = float(user_message.strip('$'))
+        return price(user_offer)
+    except ValueError:
+        # If it's not a price, continue conversation with AI
+        return get_chatbot_response(user_message)
+
+# Initialize Flask app
+app = Flask(__name__)
+
+# Define the route for the base URL (GET /)
+@app.route("/", methods=["GET"])
+def home():
+    return "<h1>Negotiation Chatbot is Running</h1><p>Use POST /chat to interact with the bot.</p>"
+
+# Define the route for the chatbot (POST /chat)
+@app.route("/chat", methods=["POST"])
+def chat():
+    user_message = request.json.get("message")
+    response = handle_user_interaction(user_message)
+    return jsonify({"response": response})
+
+# Start Pyngrok to expose the app publicly
+public_url = ngrok.connect(5000)
+print(f"Your Flask app is live at: {public_url}")
+
+# Start the Flask app
+app.run(port=5000)
+
+# Example to test the chatbot with requests
+ngrok_url = f"{public_url}/chat"
+
+# Example user message
+user_message = {"message": "I want to offer $85"}
+
+# Send POST request to the Flask app
+response = requests.post(ngrok_url, json=user_message)
+
+# Print out the chatbot's response
+print(response.json())
